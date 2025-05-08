@@ -47,7 +47,9 @@ def affinize(f, s, u):
     """
     # PART (b) ################################################################
     # INSTRUCTIONS: Use JAX to affinize `f` around `(s, u)` in two lines.
-    raise NotImplementedError()
+    # raise NotImplementedError(
+    A, B = jax.jacrev(f, argnums=(0, 1))(jnp.array(s), jnp.array(u))
+    c = f(s, u) - (A @ s + B @ u)
     # END PART (b) ############################################################
     return A, B, c
 
@@ -170,9 +172,15 @@ def scp_iteration(f, s0, s_goal, s_prev, u_prev, N, P, Q, R, u_max, ρ):
 
     # PART (c) ################################################################
     # INSTRUCTIONS: Construct the convex SCP sub-problem.
-    objective = 0.0
-    constraints = []
-    raise NotImplementedError()
+    objective = cvx.quad_form(s_cvx[-1] - s_goal, P)
+    constraints = [s_cvx[0, :] == s0, 
+                   cvx.norm_inf(s_cvx - s_prev, axis=1) <= ρ,
+                   cvx.norm_inf(u_cvx - u_prev, axis=1) <= ρ, 
+                   u_cvx <= u_max,
+                   u_cvx >= -u_max]
+    for k in range(N):
+        objective += cvx.quad_form(s_cvx[k], Q) + cvx.quad_form(u_cvx[k], R)
+        constraints.append(s_cvx[k+1] == A[k] @ s_cvx[k] + B[k] @ u_cvx[k] + c[k])
     # END PART (c) ############################################################
 
     prob = cvx.Problem(cvx.Minimize(objective), constraints)
@@ -234,7 +242,7 @@ R = 1e-3 * np.eye(m)  # control cost matrix
 u_max = 8.0  # control effort bound
 eps = 5e-1  # convergence tolerance
 max_iters = 100  # maximum number of SCP iterations
-animate = False  # flag for animation
+animate = True  # flag for animation
 
 # Initialize the discrete-time dynamics
 fd = jax.jit(discretize(cartpole, dt))
@@ -277,5 +285,5 @@ plt.show()
 # Animate the solution
 if animate:
     fig, ani = animate_cartpole(t, s[:, 0], s[:, 1])
-    ani.save("cartpole_swingup_constrained.mp4", writer="ffmpeg")
+    # ani.save("cartpole_swingup_constrained.mp4", writer="ffmpeg")
     plt.show()

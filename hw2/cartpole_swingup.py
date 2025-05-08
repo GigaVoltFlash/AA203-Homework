@@ -39,7 +39,7 @@ def linearize(f, s, u):
     """
     # WRITE YOUR CODE BELOW ###################################################
     # INSTRUCTIONS: Use JAX to compute `A` and `B` in one line.
-    raise NotImplementedError()
+    A, B = jax.jacrev(f, argnums=(0, 1))(jnp.array(s), jnp.array(u))
     ###########################################################################
     return A, B
 
@@ -102,19 +102,50 @@ def ilqr(f, s0, s_goal, N, Q, R, QN, eps=1e-3, max_iters=1000):
         s_bar[k + 1] = f(s_bar[k], u_bar[k])
     ds = np.zeros((N + 1, n))
     du = np.zeros((N, m))
+    V = np.zeros((N+1, n, n))
+    V[-1] = QN
+    v = np.zeros((N+1, n))
+    qN = QN.T @ (s_bar[-1] - s_goal)
+    v[-1] = qN
+    import pdb
 
     # iLQR loop
     converged = False
-    for _ in range(max_iters):
+    for i in range(max_iters):
         # Linearize the dynamics at each step `k` of `(s_bar, u_bar)`
         A, B = jax.vmap(linearize, in_axes=(None, 0, 0))(f, s_bar[:-1], u_bar)
         A, B = np.array(A), np.array(B)
 
         # PART (c) ############################################################
         # INSTRUCTIONS: Update `Y`, `y`, `ds`, `du`, `s_bar`, and `u_bar`.
-        raise NotImplementedError()
-        #######################################################################
+        if not converged:
 
+            # Backward pass
+            for k in range(1, N+1):
+                m = N - k # Reverse indexing
+
+                # This is the same as the above, just in a different form
+                qk = Q.T @ (s_bar[m] - s_goal)
+                rk = R.T @ (u_bar[m])
+                Q_x_k = qk + A[m].T @ v[m+1]
+                Q_u_k = rk + B[m].T @ v[m+1]
+                Q_xx_k = Q + A[m].T @ V[m+1] @ A[m]
+                Q_uu_k = R + B[m].T @ V[m+1] @ B[m]
+                Q_ux_k = B[m].T @ V[m+1] @ A[m]
+                y[m] = -np.linalg.inv(Q_uu_k) @ Q_u_k
+                Y[m] = -np.linalg.inv(Q_uu_k) @ Q_ux_k
+                V[m] = Q_xx_k - Y[m].T @ Q_uu_k @ Y[m]
+                v[m] = Q_x_k - Y[m].T @ Q_uu_k @ y[m]
+            
+            # Forward pass
+            s_bar_old = s_bar.copy()
+            for k in range(N):
+                ds[k] = s_bar[k] - s_bar_old[k]
+                du[k] = y[k] + Y[k] @ ds[k]
+                u_bar[k] += du[k]
+                s_bar[k+1] = f(s_bar[k], u_bar[k])
+                
+        #######################################################################
         if np.max(np.abs(du)) < eps:
             converged = True
             break
@@ -155,8 +186,8 @@ s0 = np.array([0.0, 0.0, 0.0, 0.0])  # initial state
 s_goal = np.array([0.0, np.pi, 0.0, 0.0])  # goal state
 T = 10.0  # simulation time
 dt = 0.1  # sampling time
-animate = False  # flag for animation
-closed_loop = False  # flag for closed-loop control
+animate = True  # flag for animation
+closed_loop = True  # flag for closed-loop control
 
 # Initialize continuous-time and discretized dynamics
 f = jax.jit(cartpole)
@@ -181,11 +212,9 @@ for k in range(N):
     # INSTRUCTIONS: Compute either the closed-loop or open-loop value of
     # `u[k]`, depending on the Boolean flag `closed_loop`.
     if closed_loop:
-        u[k] = 0.0
-        raise NotImplementedError()
+        u[k] = u_bar[k] + y[k] + Y[k] @ (s[k] - s_bar[k])
     else:  # do open-loop control
-        u[k] = 0.0
-        raise NotImplementedError()
+        u[k] = u_bar[k] + y[k]
     ###########################################################################
     s[k + 1] = odeint(lambda s, t: f(s, u[k]), s[k], t[k : k + 2])[1]
 print("done! ({:.2f} s)".format(time.time() - start), flush=True)
@@ -211,5 +240,5 @@ plt.show()
 
 if animate:
     fig, ani = animate_cartpole(t, s[:, 0], s[:, 1])
-    ani.save("cartpole_swingup.mp4", writer="ffmpeg")
+    # ani.save("cartpole_swingup.mp4", writer="ffmpeg")
     plt.show()
