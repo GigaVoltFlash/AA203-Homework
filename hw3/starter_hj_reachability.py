@@ -81,7 +81,14 @@ class PlanarQuadrotor:
         # PART (a): WRITE YOUR CODE BELOW ###############################################
         # You may find `jnp.where` to be useful; see corresponding numpy docstring:
         # https://numpy.org/doc/stable/reference/generated/numpy.where.html
-        raise NotImplementedError
+        potential_u_vals = jnp.array([[self.min_thrust_per_prop, self.max_thrust_per_prop],
+                                     [self.min_thrust_per_prop, self.min_thrust_per_prop],
+                                     [self.max_thrust_per_prop, self.max_thrust_per_prop],
+                                     [self.max_thrust_per_prop, self.min_thrust_per_prop]])
+        H_values = jnp.zeros(4)
+        for i in range(4):
+            H_values = H_values.at[i].set(grad_value @ self.dynamics(state, potential_u_vals[i]))
+        return potential_u_vals[jnp.argmin(H_values)]
         #################################################################################
 
     def hamiltonian(self, state, time, value, grad_value):
@@ -123,7 +130,10 @@ def target_set(state):
         A scalar, nonpositive iff the state is in the target set.
     """
     # PART (b): WRITE YOUR CODE BELOW ###############################################
-    raise NotImplementedError
+    return jnp.max(jnp.array([(state[0] - 3)*(state[0] - 7), 
+                  (state[1] - 1)*(state[1] + 1), 
+                  (state[2] - np.pi/12)*(state[2] + np.pi/12), 
+                  (state[3] - 1)*(state[3] + 1)]))
     #################################################################################
 
 
@@ -137,7 +147,9 @@ def envelope_set(state):
         A scalar, nonpositive iff the state is in the operational envelope.
     """
     # PART (c): WRITE YOUR CODE BELOW ###############################################
-    raise NotImplementedError
+    return jnp.max(jnp.array([(state[0] - 1)*(state[0] - 9), 
+                (state[1] - 6)*(state[1] + 6), 
+                (state[3] - 8)*(state[3] + 8)]))
     #################################################################################
 
 
@@ -355,25 +367,25 @@ def animate_optimal_trajectory(full_state, dt=1 / 100, T=5):
 # Dropping the quad straight down (v_y = -5, mimicking waiting for a sec after the drop to turn the props on).
 state = [5.0, -5.0, 0.0, 0.0]
 fig, ani = animate_optimal_trajectory(np.array([0, 0] + state))
-ani.save("planar_quad_1.mp4", writer="ffmpeg")
+# ani.save("planar_quad_1.mp4", writer="ffmpeg")
 plt.show()
 
 # Flipping the quad up into the air.
 state = [6.0, 2.0, -3 * np.pi / 4, -4.0]
 fig, ani = animate_optimal_trajectory(np.array([0, 0] + state))
-ani.save("planar_quad_2.mp4", writer="ffmpeg")
+# ani.save("planar_quad_2.mp4", writer="ffmpeg")
 plt.show()
 
 # Dropping the quad like a falling leaf.
 state = [8.0, -0.8, np.pi / 2, 2.0]
 fig, ani = animate_optimal_trajectory(np.array([0, 0] + state))
-ani.save("planar_quad_3.mp4", writer="ffmpeg")
+# ani.save("planar_quad_3.mp4", writer="ffmpeg")
 plt.show()
 
 # Too much negative vertical velocity to recover before hitting the floor.
 state = [8.0, -3.0, np.pi / 2, 2.0]
 fig, ani = animate_optimal_trajectory(np.array([0, 0] + state))
-ani.save("planar_quad_4.mp4", writer="ffmpeg")
+# ani.save("planar_quad_4.mp4", writer="ffmpeg")
 plt.show()
 
 # Examining an isosurface (exercise part (d)).

@@ -36,9 +36,14 @@ def do_mpc(
 
     # PART (a): YOUR CODE BELOW ###############################################
     # INSTRUCTIONS: Construct and solve the MPC problem using CVXPY.
-
-    cost = 0.0
-    constraints = []
+    cost = cvx.quad_form(x_cvx[-1], P)
+    constraints = [cvx.norm_inf(x_cvx[-1]) <= rf,
+                   x_cvx[0] == x0, 
+                   cvx.norm_inf(x_cvx, axis=1) <= rx,
+                   cvx.norm_inf(u_cvx, axis=1) <= ru]
+    for k in range(N):
+        cost += cvx.quad_form(x_cvx[k], Q) + cvx.quad_form(u_cvx[k], R)
+        constraints.append(x_cvx[k+1] == A @ x_cvx[k] + B @ u_cvx[k])
 
     # END PART (a) ############################################################
 
@@ -61,7 +66,7 @@ def compute_roa(
     rx: float,
     ru: float,
     rf: float,
-    grid_dim: int = 21,
+    grid_dim: int = 30,
     max_steps: int = 20,
     tol: float = 1e-2,
 ) -> np.ndarray:
@@ -77,7 +82,15 @@ def compute_roa(
             #               infeasible or the state has converged close enough
             #               to the origin. If the state converges, flag the
             #               corresponding entry of `roa` with a value of `1`.
-
+            x_mpc = np.zeros((max_steps, N + 1, n))
+            u_mpc = np.zeros((max_steps, N, m))
+            for t in range(max_steps):
+                x_mpc[t], u_mpc[t], status = do_mpc(x, A, B, P, Q, R, N, rx, ru, rf)
+                if status == "infeasible":
+                    roa[i, j] = 0
+                    break
+                x = A @ x + B @ u_mpc[t, 0, :]
+                roa[i, j] = 1
             # END PART (b) ####################################################
     return roa
 
