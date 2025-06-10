@@ -6,7 +6,8 @@ from agents.ReinforceAgent import ReinforceAgent
 import argparse, torch, datetime
     
 def main(args: argparse.Namespace) -> None:
-    env = gym.make(args.env_name, render_mode="human")
+    env = gym.make(args.env_name)
+    # env = gym.make(args.env_name, render_mode='human')
 
     if args.agent_name == "basic":
         agent = Basic(state_dim=args.state_dim, action_dim=args.action_dim)
@@ -17,7 +18,7 @@ def main(args: argparse.Namespace) -> None:
     else:
         raise ValueError(f"Unsupported agent type: {args.agent}")
 
-    environment_info(env)  # characterize the environment
+    # environment_info(env)  # characterize the environment
 
     if args.mode == "train":
         agent.train(env)

@@ -5,6 +5,8 @@ import gymnasium as gym
 from tqdm import tqdm
 import numpy as np
 import math, torch, random
+import matplotlib.pyplot as plt
+import pdb
 
 class QLearning(Agent):
     def __init__(self, state_dim : int, action_dim : int, hidden_dim : int=24, use_gpu : bool=False) -> None:
@@ -34,7 +36,13 @@ class QLearning(Agent):
         ###     nn.Sequential: https://docs.pytorch.org/docs/stable/generated/torch.nn.Sequential.html
         ###     nn.Linear: https://docs.pytorch.org/docs/stable/generated/torch.nn.Linear.html
         ###     nn.ReLU: https://docs.pytorch.org/docs/stable/generated/torch.nn.ReLU.html
-        raise NotImplementedError()
+        model = torch.nn.Sequential(
+            torch.nn.Linear(self.state_dim, self.hidden_dim),
+            torch.nn.ReLU(),
+            torch.nn.Linear(self.hidden_dim, self.hidden_dim),
+            torch.nn.ReLU(),
+            torch.nn.Linear(self.hidden_dim, self.action_dim))
+        return model
         ###########################################################################
     
     def policy(self, state : Union[np.ndarray, torch.tensor], train : bool=False) -> torch.Tensor:
@@ -51,7 +59,16 @@ class QLearning(Agent):
         ###     torch.randint: https://docs.pytorch.org/docs/stable/generated/torch.randint.html
         ###     torch.argmax: https://docs.pytorch.org/docs/stable/generated/torch.argmax.html
         ###     torch.no_grad(): https://docs.pytorch.org/docs/stable/generated/torch.no_grad.html
-        raise NotImplementedError()
+        if train:
+            rand_num = random.random()
+            if rand_num < self.eps_threshold():
+                policy_action = torch.randint(self.action_dim, (1,))
+            else:
+                policy_action = torch.argmax(self.policy_network(state))
+        else:
+            with torch.no_grad():
+                policy_action = torch.argmax(self.policy_network(state))
+        return policy_action
         ###########################################################################
     
     def sample_buffer(self) -> tuple[torch.Tensor, torch.Tensor]:
@@ -68,7 +85,7 @@ class QLearning(Agent):
         
         return torch.cat(states), torch.tensor(actions, dtype=torch.int64).to(self.device).unsqueeze(1), torch.cat(targets).unsqueeze(1)
 
-    def train(self, env : gym.wrappers, num_episodes : int=100) -> None:
+    def train(self, env : gym.wrappers, num_episodes : int=300) -> None:
         ### WRITE YOUR CODE BELOW ###################################################
         ###     1) Implementing the training algorithm according to Algorithm 1 on page 5 in "Playing Atari with Deep Reinforcement Learning".
         ###     2) Importantly, only take a gradient step on your memory buffer if the buffer size exceeds the batch size hyperparameter. 
@@ -81,5 +98,47 @@ class QLearning(Agent):
         ###     torch.optim.AdamW: https://docs.pytorch.org/docs/stable/generated/torch.optim.AdamW.html
         ###     torch.nn.MSELoss: https://docs.pytorch.org/docs/stable/generated/torch.nn.MSELoss.html
         ###     torch.nn.utils.clip_grad_value_: https://docs.pytorch.org/docs/stable/generated/torch.nn.utils.clip_grad_value_.html
-        raise NotImplementedError()
+        optimizer = torch.optim.AdamW(self.policy_network.parameters(), lr=1e-3)
+        rewards_over_time = []
+        # plt.ion()
+        fig, ax = plt.subplots()
+        ax.set_xlabel('Episode')
+        ax.set_ylabel('Total Reward')
+        ax.set_title('Q-Learning Training Progress')
+
+        for i in tqdm(range(num_episodes), desc="Training Q-Learning Agent"):
+            # pdb.set_trace()
+            s, _ = env.reset()
+            s = torch.tensor(s)
+            terminated_bool = False
+            truncated_bool = False
+            full_reward = 0
+            while not terminated_bool and not truncated_bool:
+                action = self.policy(s, True)
+                s_next, reward, terminated_bool, truncated_bool, _ = env.step(action.item())
+                full_reward += reward
+                s_next = torch.tensor(s_next)
+                if terminated_bool or truncated_bool:
+                    transition = Transition(s, action, torch.tensor([reward]), None)
+                else:
+                    transition = Transition(s, action, torch.tensor([reward]), s_next)
+                self.buffer.append(transition)
+                if len(self.buffer) > self.batch_size:
+                    s_sample, a_sample, target = self.sample_buffer()
+                    s_sample = s_sample.reshape(self.batch_size, -1)
+                    mse = torch.nn.MSELoss()
+                    q_values = self.policy_network(s_sample)
+                    q_selected = q_values.gather(1, a_sample)
+                    loss = mse(q_selected, target)
+                    optimizer.zero_grad()
+                    loss.backward()
+                    torch.nn.utils.clip_grad_value_(self.policy_network.parameters(), 100)
+                    optimizer.step()
+                s = s_next
+            rewards_over_time.append(full_reward)
+
+        # Update plot
+        plt.plot(np.arange(len(rewards_over_time)), rewards_over_time)
+        plt.savefig('qlearning_reward_over_time.png')
+        
         ###########################################################################

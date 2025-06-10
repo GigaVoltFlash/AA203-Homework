@@ -68,13 +68,12 @@ log["s"], log["a"], log["r"] = simulate(rng, lambda s, A=A: rng.choice(A), T)
 
 
 # Do Q-learning
-γ = 0.95  # discount factor
+γ = 0.95 # discount factor
 α = 1e-2  # learning rate
 num_epochs = 5 * int(1 / α)  # number of epochs
 
 Q = np.zeros((S.size, A.size))
 Q_epoch = np.zeros((num_epochs + 1, S.size, A.size))
-
 for k in tqdm(range(1, num_epochs + 1)):
     # Shuffle transition tuple indices
     shuffled_indices = rng.permutation(T)
@@ -82,6 +81,13 @@ for k in tqdm(range(1, num_epochs + 1)):
     # ####################### PART (a): YOUR CODE BELOW #######################
 
     # INSTRUCTIONS: Update `Q` using Q-learning.
+    for index in shuffled_indices:
+        r_val = log["r"][index]
+        s_index = int(log["s"][index])
+        s_index_next = int(log["s"][index+1])
+        a_index = int(log["a"][index]/2)
+
+        Q[s_index, a_index] += α*(r_val + γ*np.max(Q[s_index_next, :]) - Q[s_index, a_index])
 
     # ############################# END PART (a) ##############################
 
@@ -99,8 +105,16 @@ Q_vi_prev = np.full(Q_vi.shape, np.inf)
 for k in tqdm(range(max_iters)):
 
     # ####################### PART (b): YOUR CODE BELOW #######################
-
-    # INSTRUCTIONS: Update `Q_vi` using value iteration.
+    for s_index in range(6):
+        for a_index in range(3):
+            s_val = S[s_index]
+            a_val = A[a_index]
+            s_bar_indices = [np.where(S == transition(s_val, a_val, d))[0][0] for d in D]
+            if k==0:
+                expectation = np.array([P[i]*(reward(s_val, a_val, D[i])) for i in range(len(D))])
+            else:
+                expectation = np.array([P[i]*(reward(s_val, a_val, D[i]) + γ*np.max(Q_vi_prev[s_bar_indices[i], :])) for i in range(len(D))])
+            Q_vi[s_index, a_index] = np.sum(expectation)
 
     # ############################# END PART (b) ##############################
 
@@ -150,11 +164,19 @@ plt.show()
 
 T = 5 * 365
 
-# TODO: replace the next four lines with your code
-a_opt_ql = np.zeros(S.size)
-profit_ql = np.zeros(T)
-a_opt_vi = np.zeros(S.size)
-profit_vi = np.zeros(T)
+a_opt_vi = np.array([np.argmax(Q_vi[s_val, :]) for s_val in S])
+
+a_opt_ql = np.array([np.argmax(Q[s_val, :]) for s_val in S])
+rewards_vi_sum = np.zeros(T)
+rewards_ql_sum = np.zeros(T)
+for i in range(50):
+    _, _, rewards_vi = simulate(rng, lambda s: A[a_opt_vi[int(s)]], T)
+    _, _, rewards_ql = simulate(rng, lambda s: A[a_opt_ql[int(s)]], T)
+    rewards_vi_sum += rewards_vi
+    rewards_ql_sum += rewards_ql
+
+profit_ql = np.cumsum(rewards_ql_sum/50)
+profit_vi = np.cumsum(rewards_vi_sum/50)
 
 # ############################### END PART (c) ################################
 

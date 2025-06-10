@@ -4,6 +4,7 @@ import gymnasium as gym
 import numpy as np
 import matplotlib.pyplot as plt
 import torch, datetime
+import pdb
 
 class ReinforceAgent(Agent):
     def __init__(self, state_dim : int, action_dim : int, hidden_dim : int=24) -> None:
@@ -31,7 +32,7 @@ class ReinforceAgent(Agent):
         else:
             return action
 
-    def train(self, env: gym.wrappers, num_episodes: int=500) -> None:
+    def train(self, env: gym.wrappers, num_episodes: int=2000) -> None:
         reward_history = []
         for episode in range(num_episodes):
             obs, info = env.reset(seed=1738)
@@ -62,11 +63,33 @@ class ReinforceAgent(Agent):
         ###     torch.stack: https://docs.pytorch.org/docs/stable/generated/torch.stack.html
 
         # 1) Naive REINFORCE
-
+        gamma_array = torch.pow(self.gamma, torch.arange(len(rewards)))
+        log_probs_tensor = torch.stack(log_probs)
+        rewards_tensor = torch.tensor(rewards)
+        log_probs_sum = torch.sum(log_probs_tensor)
+        rewards_sum = torch.sum(torch.mul(rewards_tensor, gamma_array))
+        loss = -torch.mean(rewards_sum * log_probs_sum)
+        
         # 2) REINFORCE with causality trick
+        gamma_array = torch.pow(self.gamma, torch.arange(len(rewards)))
+        log_probs_tensor = torch.stack(log_probs)
+        rewards_tensor = torch.tensor(rewards)
+        rewards_discounted = torch.mul(rewards_tensor, gamma_array)
+        rewards_after_t = torch.flip(torch.cumsum(torch.flip(rewards_discounted, dims=[0]), dim=0), dims=[0])
+        log_probs_reward_weighted = torch.mul(log_probs_tensor, rewards_after_t)
+        cost_gradient = torch.sum(log_probs_reward_weighted)
+        loss = -torch.mean(cost_gradient)
 
         # 3) REINFORCE with causality trick and baseline to "center" the returns
-        loss = None
+        gamma_array = torch.pow(self.gamma, torch.arange(len(rewards)))
+        log_probs_tensor = torch.stack(log_probs)
+        rewards_tensor = torch.tensor(rewards)
+        rewards_discounted = torch.mul(rewards_tensor, gamma_array)
+        mean_rewards_discounted = torch.mean(rewards_discounted)
+        rewards_after_t = torch.flip(torch.cumsum(torch.flip(rewards_discounted, dims=[0]), dim=0), dims=[0])
+        log_probs_reward_weighted = torch.mul(log_probs_tensor, rewards_after_t - mean_rewards_discounted)
+        cost_gradient = torch.sum(log_probs_reward_weighted)
+        loss = -torch.mean(cost_gradient)
         ###########################################################################
 
         self.optimizer.zero_grad()
